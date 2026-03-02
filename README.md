@@ -1,33 +1,40 @@
 # CallPilot MVP
 
-Demo flow: parse request → simulate calls → rank providers → confirm best slot.
+CallPilot is a FastAPI + vanilla JS demo that takes a natural-language booking request, finds/ranks providers, simulates or runs call flows, and confirms the best appointment slot.
 
-## Real providers (Google Maps)
+## Features
 
-To show **real dentist names, addresses, ratings, and distances** for a city:
+- Parse user requests like: “Book me a dentist appointment tomorrow afternoon”
+- Rank providers by availability, rating, and distance
+- Parallel and sequential (streamed) call simulation modes
+- Booking confirmation + in-memory booking list
+- Optional Google Places lookup for real providers
+- Optional ElevenLabs integrations:
+  - Text-to-speech (`/api/voice/tts`)
+  - Speech-to-text (`/api/voice/stt`)
+  - Live conversational voice websocket (`/api/voice/live/ws`)
+- Optional Twilio webhook + outbound call bridge
 
-1. **Create a Google Cloud project** and enable:
-   - [Geocoding API](https://console.cloud.google.com/apis/library/geocoding-backend.googleapis.com)
-   - [Places API](https://console.cloud.google.com/apis/library/places-backend.googleapis.com) (or “Places API (Legacy)” if you use the legacy endpoint)
+## Tech Stack
 
-2. **Create an API key** (APIs & Services → Credentials → Create credentials → API key) and restrict it to the APIs above.
+- Backend: FastAPI, Uvicorn, HTTPX, python-dotenv
+- Voice/Telephony: ElevenLabs SDK, Twilio SDK
+- Frontend: HTML/CSS/JS (no framework)
 
-3. **Set in `.env`**:
-   ```bash
-   GOOGLE_MAPS_API_KEY=your_api_key_here
-   ```
-   Optional: `DEFAULT_SEARCH_LOCATION=San Francisco, CA` (used when the user doesn’t say a city).
+## Project Structure
 
-With the key set, booking requests use live Google Places results for the requested city. Without it, the app uses mock data.
-
-## Real ElevenLabs elements in this build
-
-- `GET /api/voice/voices` loads your real ElevenLabs voice list.
-- `POST /api/voice/tts` generates spoken confirmation with your selected voice.
-- `POST /api/voice/stt` transcribes recorded mic audio with ElevenLabs STT.
-
-Set in `.env`:
-```bash
-ELEVENLABS_API_KEY=your_key_here
-ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
-```
+```text
+callpilot/
+├── backend/
+│   ├── main.py
+│   ├── tools.py
+│   ├── conversational_tools.py
+│   ├── voice_agent.py
+│   ├── twilio_handler.py
+│   └── mock_data.py
+├── frontend/
+│   ├── index.html
+│   └── voice_interface.html
+├── requirements.txt
+├── .env.example
+└── README.md
