@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CallPilot MVP</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #111827;
+        --card: #1f2937;
+        --text: #e5e7eb;
+        --muted: #94a3b8;
+        --accent: #22c55e;
+        --accent2: #38bdf8;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Avenir Next", "Segoe UI", sans-serif;
+        background: radial-gradient(circle at 10% 10%, #1d4ed8 0%, var(--bg) 45%);
+        color: var(--text);
+        min-height: 100vh;
+      }
+      .wrap {
+        max-width: 980px;
+        margin: 32px auto;
+        padding: 20px;
+      }
+      .panel {
+        background: rgba(17, 24, 39, 0.88);
+        border: 1px solid #334155;
+        border-radius: 16px;
+        padding: 20px;
+        margin-bottom: 16px;
+      }
+      h1 { margin: 0 0 8px; font-size: 32px; }
+      p { margin: 0; color: var(--muted); }
+      .row { display: flex; gap: 10px; margin-top: 14px; }
+      .labels { display: flex; gap: 10px; margin-top: 10px; color: var(--muted); font-size: 12px; }
+      .labels > div { flex: 1; }
+      .labels .small { max-width: 90px; flex: 0 0 90px; }
+      input, select {
+        flex: 1;
+        padding: 12px;
+        border-radius: 10px;
+        border: 1px solid #475569;
+        background: #0b1220;
+        color: var(--text);
+      }
+      button {
+        border: 0;
+        background: linear-gradient(90deg, var(--accent), var(--accent2));
+        color: #041316;
+        padding: 12px 16px;
+        border-radius: 10px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .status { margin-top: 10px; color: #cbd5e1; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      .card {
+        background: var(--card);
+        border: 1px solid #334155;
+        border-radius: 14px;
+        padding: 14px;
+      }
+      table { width: 100%; border-collapse: collapse; }
+      th, td {
+        text-align: left;
+        padding: 8px;
+        border-bottom: 1px solid #374151;
+        font-size: 14px;
+      }
+      .log {
+        background: #020617;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 10px;
+        font-family: ui-monospace, Menlo, monospace;
+        font-size: 12px;
+        max-height: 220px;
+        overflow: auto;
+        white-space: pre-wrap;
+      }
+      .winner {
+        margin-top: 10px;
+        padding: 10px;
+        border-radius: 10px;
+        background: #052e1a;
+        border: 1px solid #166534;
+      }
+      .btn-secondary {
+        background: #1e3a5f;
+        color: var(--accent2);
+        border: 1px solid #38bdf8;
+      }
+      .btn-jumpin {
+        background: #4c1d95;
+        color: #e9d5ff;
+        border: 1px solid #a78bfa;
+      }
+      .transcript-log { min-height: 120px; }
+      .transcript-line { margin: 4px 0; padding: 4px 8px; border-radius: 6px; }
+      .transcript-line.callpilot { background: #1e3a5f; color: #93c5fd; }
+      .transcript-line.provider { background: #1c1917; color: #fcd34d; }
+      .transcript-line.system { color: var(--muted); font-style: italic; }
+      .booked-card {
+        background: var(--card);
+        border: 1px solid #166534;
+        border-radius: 12px;
+        padding: 16px;
+      }
+      .booked-card p { margin: 6px 0; color: var(--text); }
+      @media (max-width: 840px) {
+        .grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="panel">
+        <h1>CallPilot MVP</h1>
+        <p>Demo flow: parse request -> simulate calls -> rank providers -> confirm best slot.</p>
+        <div class="labels">
+          <div>Request</div>
+          <div class="small">Max Calls</div>
+          <div class="small">Call mode</div>
+          <div class="small"></div>
+          <div class="small"></div>
+        </div>
+        <div class="row">
+          <input id="requestText" value="Book me a dentist appointment tomorrow afternoon" />
+          <input id="maxCalls" type="number" min="1" max="15" value="5" style="max-width:90px;" title="Simulated parallel calls" />
+          <select id="callMode" style="max-width:140px;" title="All at once or one by one">
+            <option value="parallel">All at once</option>
+            <option value="sequential">One by one</option>
+          </select>
+          <button id="runBtn">Run Agent</button>
+          <button id="micBtn" type="button">Use Mic</button>
+          <button id="elevenMicBtn" type="button">Eleven STT Mic</button>
+          <button id="speakBtn" type="button">Speak Result</button>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <button id="bookAppointmentBtn" type="button" class="btn-secondary" style="display:none;">Book this appointment</button>
+          <button id="jumpInBtn" type="button" class="btn-jumpin" style="display:none;">Jump in (talk to AI)</button>
+          <div id="jumpInInputWrap" style="display:none; flex:1; gap:8px; align-items:center;">
+            <input id="jumpInText" type="text" placeholder="Type to talk to AI..." style="max-width:280px;" />
+            <button id="jumpInSend" type="button">Send</button>
+          </div>
+        </div>
+        <div class="labels">
+          <div class="small">ElevenLabs Voice</div>
+        </div>
+        <div class="row">
+          <select id="voiceSelect" style="max-width:320px;"></select>
+          <button id="loadVoicesBtn" type="button">Refresh Voices</button>
+        </div>
+        <div class="labels">
+          <div class="small">Availability Weight</div>
+          <div class="small">Rating Weight</div>
+          <div class="small">Distance Weight</div>
+        </div>
+        <div class="row">
+          <input id="wAvailability" type="number" step="0.1" value="0.4" style="max-width:110px;" title="Availability weight" />
+          <input id="wRating" type="number" step="0.1" value="0.3" style="max-width:110px;" title="Rating weight" />
+          <input id="wDistance" type="number" step="0.1" value="0.3" style="max-width:110px;" title="Distance weight" />
+        </div>
+        <div id="status" class="status">Waiting for input...</div>
+        <div id="confirmation" class="winner" style="display:none;"></div>
+      </section>
+
+      <section class="panel" id="bookedSection" style="display:none;">
+        <h3>Booked appointment(s)</h3>
+        <div id="bookedContent" class="booked-card"></div>
+      </section>
+
+      <section class="panel" id="liveTranscriptSection">
+        <h3>Live transcript (AI ↔ dentist)</h3>
+        <div id="liveTranscript" class="log transcript-log"></div>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <h3>Provider Comparison</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>Slot</th>
+                <th>Rating</th>
+                <th>Distance</th>
+                <th>Source</th>
+                <th>Score</th>
+              </tr>
+            </thead>
+            <tbody id="optionsBody">
+              <tr><td colspan="6" style="color:#94a3b8;">No results yet.</td></tr>
+            </tbody>
+          </table>
+        </article>
+
+        <article class="card">
+          <h3>Call Logs</h3>
+          <div id="logs" class="log">Call logs will appear here...</div>
+        </article>
+
+        <article class="card">
+          <h3>Tool Logs (Agentic Functions)</h3>
+          <div id="toolLogs" class="log">Tool logs will appear here...</div>
+        </article>
+      </section>
+    </main>
+
+    <script>
+      const API_BASE = "http://127.0.0.1:8000";
+      const runBtn = document.getElementById("runBtn");
+      const requestText = document.getElementById("requestText");
+      const maxCallsInput = document.getElementById("maxCalls");
+      const wAvailability = document.getElementById("wAvailability");
+      const wRating = document.getElementById("wRating");
+      const wDistance = document.getElementById("wDistance");
+      const micBtn = document.getElementById("micBtn");
+      const elevenMicBtn = document.getElementById("elevenMicBtn");
+      const speakBtn = document.getElementById("speakBtn");
+      const voiceSelect = document.getElementById("voiceSelect");
+      const loadVoicesBtn = document.getElementById("loadVoicesBtn");
+      const statusEl = document.getElementById("status");
+      const optionsBody = document.getElementById("optionsBody");
+      const logsEl = document.getElementById("logs");
+      const toolLogsEl = document.getElementById("toolLogs");
+      const confirmationEl = document.getElementById("confirmation");
+      const callModeSelect = document.getElementById("callMode");
+      const bookAppointmentBtn = document.getElementById("bookAppointmentBtn");
+      const jumpInBtn = document.getElementById("jumpInBtn");
+      const liveTranscriptEl = document.getElementById("liveTranscript");
+      const bookedSection = document.getElementById("bookedSection");
+      const bookedContent = document.getElementById("bookedContent");
+      const jumpInInputWrap = document.getElementById("jumpInInputWrap");
+      const jumpInText = document.getElementById("jumpInText");
+      const jumpInSend = document.getElementById("jumpInSend");
+      let lastConfirmation = "";
+      let lastBookingResult = null;
+      let mediaRecorder = null;
+      let mediaStream = null;
+      let recordedChunks = [];
+      let isElevenRecording = false;
+      let liveVoiceWs = null;
+      let jumpInActive = false;
+
+      async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const response = await fetch(url, { ...options, signal: controller.signal });
+          return response;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      }
+
+      async function ensureBackendReady() {
+        try {
+          const response = await fetchWithTimeout(`${API_BASE}/api/health`, {}, 4000);
+          return response.ok;
+        } catch (_) {
+          return false;
+        }
+      }
+
+      function backendHelpMessage(prefix = "Cannot reach backend.") {
+        return `${prefix} Start API at ${API_BASE} and open UI via http://127.0.0.1:5500/index.html (not file://).`;
+      }
+
+      function renderOptions(options) {
+        if (!options.length) {
+          optionsBody.innerHTML = '<tr><td colspan="6" style="color:#94a3b8;">No options found.</td></tr>';
+          return;
+        }
+
+        optionsBody.innerHTML = options
+          .map((option, i) => `
+            <tr>
+              <td>${i === 0 ? "<strong>" + option.name + " (Best)</strong>" : option.name}</td>
+              <td>${option.slot || "No slot"}</td>
+              <td>${option.rating}</td>
+              <td>${option.distance_km} km</td>
+              <td>${option.data_source}</td>
+              <td>${option.score}</td>
+            </tr>
+          `)
+          .join("");
+      }
+
+      function renderLogs(callLogs) {
+        if (!callLogs.length) {
+          logsEl.textContent = "No call logs yet.";
+          return;
+        }
+        logsEl.textContent = callLogs
+          .map((entry) => `[${entry.provider}]\n${entry.log.join("\n")}`)
+          .join("\n\n");
+      }
+
+      function renderToolLogs(toolLogs) {
+        if (!toolLogs || !toolLogs.length) {
+          toolLogsEl.textContent = "No tool logs yet.";
+          return;
+        }
+        toolLogsEl.textContent = toolLogs.join("\n");
+      }
+
+      function appendLiveTranscript(speaker, text, provider) {
+        const line = document.createElement("div");
+        line.className = "transcript-line " + (speaker === "CallPilot" ? "callpilot" : speaker === "system" ? "system" : "provider");
+        const label = provider ? `[${provider}] ` : "";
+        line.textContent = label + (speaker !== "system" ? speaker + ": " : "") + text;
+        liveTranscriptEl.appendChild(line);
+        liveTranscriptEl.scrollTop = liveTranscriptEl.scrollHeight;
+      }
+
+      function clearLiveTranscript() {
+        liveTranscriptEl.innerHTML = "";
+      }
+
+      async function runBookingSequential() {
+        const text = requestText.value.trim();
+        if (!text) return;
+        const backendReady = await ensureBackendReady();
+        if (!backendReady) {
+          statusEl.textContent = backendHelpMessage();
+          return;
+        }
+        runBtn.disabled = true;
+        statusEl.textContent = "CallPilot is calling providers one by one...";
+        confirmationEl.style.display = "none";
+        bookAppointmentBtn.style.display = "none";
+        clearLiveTranscript();
+        appendLiveTranscript("system", "Ranking providers...", null);
+
+        try {
+          const response = await fetch(`${API_BASE}/api/book/stream`, {
+            method: "POST",
+            mode: "cors",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              request_text: text,
+              max_calls: Number(maxCallsInput.value || 5),
+              weights: {
+                availability: Number(wAvailability.value || 0.4),
+                rating: Number(wRating.value || 0.3),
+                distance: Number(wDistance.value || 0.3),
+              },
+            }),
+          });
+          if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`API error ${response.status}: ${errText.slice(0, 100)}`);
+          }
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n\n");
+            buffer = lines.pop() || "";
+            for (const chunk of lines) {
+              if (!chunk.startsWith("data: ")) continue;
+              try {
+                const data = JSON.parse(chunk.slice(6));
+                if (data.type === "ranking_done") {
+                  lastBookingResult = { options: data.options || [], tool_logs: data.tool_logs || [], winner: null, parsed: null, call_logs: [] };
+                  renderOptions(data.options || []);
+                  renderToolLogs(data.tool_logs || []);
+                  clearLiveTranscript();
+                } else if (data.type === "call_start") {
+                  appendLiveTranscript("system", `Calling ${data.provider}...`, null);
+                } else if (data.type === "transcript") {
+                  appendLiveTranscript(data.speaker, data.text, data.provider);
+                } else if (data.type === "call_end") {
+                  appendLiveTranscript("system", `Call with ${data.provider} ended.`, null);
+                } else if (data.type === "done") {
+                  lastBookingResult = {
+                    options: lastBookingResult?.options || data.options || [],
+                    winner: data.winner,
+                    parsed: parseRequestText(text),
+                    call_logs: lastBookingResult?.call_logs || [],
+                    tool_logs: lastBookingResult?.tool_logs || [],
+                  };
+                  if (data.winner) {
+                    lastConfirmation = data.message || "";
+                    confirmationEl.textContent = lastConfirmation;
+                    confirmationEl.style.display = "block";
+                    bookAppointmentBtn.style.display = "inline-block";
+                    jumpInBtn.style.display = "inline-block";
+                    speakText(lastConfirmation);
+                  }
+                  statusEl.textContent = "Sequential calls completed.";
+                }
+              } catch (e) { /* skip bad chunk */ }
+            }
+          }
+        } catch (error) {
+          const msg = error && error.message ? error.message : String(error);
+          if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+            statusEl.textContent = backendHelpMessage("Stream failed.");
+          } else {
+            statusEl.textContent = "Stream failed: " + msg;
+          }
+        } finally {
+          runBtn.disabled = false;
+        }
+      }
+
+      function parseRequestText(text) {
+        const lowered = text.toLowerCase();
+        let service = "dentist";
+        if (lowered.includes("hair") || lowered.includes("salon")) service = "hair_salon";
+        if (lowered.includes("auto") || lowered.includes("car")) service = "auto_repair";
+        let preferred_day = "this week";
+        if (lowered.includes("tomorrow")) preferred_day = "tomorrow";
+        let preferred_time = "any";
+        if (lowered.includes("morning")) preferred_time = "morning";
+        if (lowered.includes("afternoon")) preferred_time = "afternoon";
+        if (lowered.includes("evening")) preferred_time = "evening";
+        let location = "San Francisco, CA";
+        if (lowered.includes(" near ")) location = text.split(" near ").pop().trim();
+        if (lowered.includes(" in ")) location = text.split(" in ").pop().trim();
+        return { service, preferred_day, preferred_time, location };
+      }
+
+      async function runBooking() {
+        const text = requestText.value.trim();
+        if (!text) return;
+        const backendReady = await ensureBackendReady();
+        if (!backendReady) {
+          statusEl.textContent = backendHelpMessage();
+          return;
+        }
+
+        const callMode = callModeSelect.value || "parallel";
+        if (callMode === "sequential") {
+          await runBookingSequential();
+          return;
+        }
+
+        runBtn.disabled = true;
+        statusEl.textContent = "CallPilot is simulating calls (all at once)...";
+        confirmationEl.style.display = "none";
+        bookAppointmentBtn.style.display = "none";
+        clearLiveTranscript();
+        appendLiveTranscript("system", "Calling all providers in parallel...", null);
+
+        try {
+          const response = await fetchWithTimeout(`${API_BASE}/api/book`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              request_text: text,
+              max_calls: Number(maxCallsInput.value || 5),
+              call_mode: callMode,
+              weights: {
+                availability: Number(wAvailability.value || 0.4),
+                rating: Number(wRating.value || 0.3),
+                distance: Number(wDistance.value || 0.3),
+              },
+            }),
+          }, 45000);
+
+          if (!response.ok) {
+            throw new Error(`API error ${response.status}`);
+          }
+
+          const data = await response.json();
+          lastBookingResult = data;
+          renderOptions(data.options || []);
+          renderLogs(data.call_logs || []);
+          renderToolLogs(data.tool_logs || []);
+
+          // Build live transcript from call_logs (parallel: show all)
+          for (const entry of (data.call_logs || [])) {
+            const provider = entry.provider;
+            for (const line of entry.log || []) {
+              if (line.startsWith("CallPilot:")) appendLiveTranscript("CallPilot", line.replace("CallPilot:", "").trim(), provider);
+              else if (line.includes(": ") && !line.startsWith("Calling")) {
+                const [speaker, ...rest] = line.split(": ");
+                appendLiveTranscript(speaker.trim(), rest.join(": ").trim(), provider);
+              } else appendLiveTranscript("system", line, provider);
+            }
+          }
+
+          lastConfirmation = data.message || "Done.";
+          confirmationEl.textContent = lastConfirmation;
+          confirmationEl.style.display = "block";
+          if (data.winner) {
+            bookAppointmentBtn.style.display = "inline-block";
+            jumpInBtn.style.display = "inline-block";
+          }
+          statusEl.textContent = `Completed using location: ${data.location_used || "default"} | swarm calls: ${data.swarm_parallel_calls_simulated || 0}.`;
+          speakText(lastConfirmation);
+        } catch (error) {
+          const rawMsg = error && error.message ? error.message : String(error);
+          const msg = error && error.name === "AbortError"
+            ? "Request timed out. Check backend server/logs."
+            : (rawMsg.includes("Failed to fetch") || rawMsg.includes("NetworkError")
+              ? backendHelpMessage("Request failed.")
+              : `Failed: ${rawMsg}`);
+          statusEl.textContent = msg;
+        } finally {
+          runBtn.disabled = false;
+        }
+      }
+
+      async function confirmBooking() {
+        if (!lastBookingResult || !lastBookingResult.winner) return;
+        try {
+          const res = await fetchWithTimeout(`${API_BASE}/api/book/confirm`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              winner: lastBookingResult.winner,
+              parsed: lastBookingResult.parsed || parseRequestText(requestText.value.trim()),
+            }),
+          }, 10000);
+          if (!res.ok) throw new Error("Confirm failed");
+          const data = await res.json();
+          statusEl.textContent = data.message || "Booked.";
+          await loadBookings();
+        } catch (e) {
+          statusEl.textContent = "Booking failed: " + e.message;
+        }
+      }
+
+      async function loadBookings() {
+        try {
+          const res = await fetch(`${API_BASE}/api/bookings`);
+          const data = await res.json();
+          if (data.bookings && data.bookings.length > 0) {
+            bookedSection.style.display = "block";
+            bookedContent.innerHTML = data.bookings.map(b =>
+              `<div class="booked-card" style="margin-bottom:10px;"><p><strong>${b.provider_name}</strong></p><p>${b.service_type} · ${b.slot}</p>${b.address ? `<p>${b.address}</p>` : ""}${b.phone ? `<p>${b.phone}</p>` : ""}</div>`
+            ).join("");
+          }
+        } catch (_) {}
+      }
+
+      async function toggleJumpIn() {
+        if (jumpInActive && liveVoiceWs) {
+          liveVoiceWs.close();
+          liveVoiceWs = null;
+          jumpInActive = false;
+          jumpInBtn.textContent = "Jump in (talk to AI)";
+          jumpInInputWrap.style.display = "none";
+          return;
+        }
+        try {
+          const configRes = await fetch(`${API_BASE}/api/config`);
+          const config = await configRes.json();
+          const agentId = config.elevenlabs_agent_id;
+          if (!agentId) {
+            statusEl.textContent = "Jump in requires ELEVENLABS_AGENT_ID in backend .env";
+            return;
+          }
+          const wsBase = API_BASE.replace(/^http/, "ws");
+          const wsUrl = `${wsBase}/api/voice/live/ws`;
+          liveVoiceWs = new WebSocket(wsUrl);
+          liveVoiceWs.onopen = () => {
+            liveVoiceWs.send(JSON.stringify({ type: "start", agent_id: agentId, requires_auth: true }));
+            jumpInActive = true;
+            jumpInBtn.textContent = "End jump in";
+            jumpInInputWrap.style.display = "flex";
+            statusEl.textContent = "You're in! Type below to talk to the AI.";
+          };
+          liveVoiceWs.onmessage = (ev) => {
+            try {
+              const msg = JSON.parse(ev.data);
+              if (msg.type === "user_transcript") appendLiveTranscript("You", msg.text, null);
+              else if (msg.type === "agent_response" || (msg.type === "agent_chat_response_part" && msg.text)) appendLiveTranscript("CallPilot", msg.text || "", null);
+            } catch (_) {}
+          };
+          liveVoiceWs.onerror = () => { statusEl.textContent = "WebSocket error."; };
+          liveVoiceWs.onclose = () => {
+            jumpInActive = false;
+            jumpInBtn.textContent = "Jump in (talk to AI)";
+            jumpInInputWrap.style.display = "none";
+          };
+        } catch (e) {
+          statusEl.textContent = "Jump in failed: " + e.message;
+        }
+      }
+
+      async function speakText(text) {
+        if (!text) return;
+        try {
+          const selectedVoice = voiceSelect.value || undefined;
+          const response = await fetchWithTimeout(`${API_BASE}/api/voice/tts`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, voice_id: selectedVoice }),
+          }, 15000);
+          if (!response.ok) {
+            throw new Error(`TTS API error ${response.status}`);
+          }
+          const audioBlob = await response.blob();
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const audio = new Audio(audioUrl);
+          audio.play();
+        } catch (error) {
+          statusEl.textContent = `Booking worked, but voice failed: ${error.message}`;
+        }
+      }
+
+      async function loadVoices() {
+        try {
+          const response = await fetchWithTimeout(`${API_BASE}/api/voice/voices`, {}, 12000);
+          if (!response.ok) {
+            throw new Error(`Voices API error ${response.status}`);
+          }
+          const data = await response.json();
+          const voices = data.voices || [];
+          const defaultVoiceId = data.default_voice_id || "";
+          voiceSelect.innerHTML = "";
+          if (!voices.length) {
+            const option = document.createElement("option");
+            option.value = "";
+            option.textContent = "No voices returned";
+            voiceSelect.appendChild(option);
+            return;
+          }
+          voices.forEach((voice) => {
+            const option = document.createElement("option");
+            option.value = voice.voice_id;
+            option.textContent = `${voice.name} (${voice.category})`;
+            voiceSelect.appendChild(option);
+          });
+          const hasDefault = voices.some((v) => v.voice_id === defaultVoiceId);
+          if (hasDefault) {
+            voiceSelect.value = defaultVoiceId;
+          }
+          statusEl.textContent = `Loaded ${voices.length} ElevenLabs voices.`;
+        } catch (error) {
+          statusEl.textContent = `Could not load voices: ${error.message}`;
+        }
+      }
+
+      async function toggleElevenMic() {
+        if (!navigator.mediaDevices || !window.MediaRecorder) {
+          statusEl.textContent = "Eleven STT recording not supported in this browser.";
+          return;
+        }
+
+        if (!isElevenRecording) {
+          try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            recordedChunks = [];
+            mediaRecorder = new MediaRecorder(mediaStream);
+            mediaRecorder.ondataavailable = (event) => {
+              if (event.data && event.data.size > 0) recordedChunks.push(event.data);
+            };
+            mediaRecorder.onstop = async () => {
+              const audioBlob = new Blob(recordedChunks, { type: "audio/webm" });
+              const formData = new FormData();
+              formData.append("file", audioBlob, "recording.webm");
+              statusEl.textContent = "Transcribing with ElevenLabs...";
+              try {
+                const response = await fetchWithTimeout(`${API_BASE}/api/voice/stt`, {
+                  method: "POST",
+                  body: formData,
+                }, 30000);
+                if (!response.ok) {
+                  throw new Error(`STT API error ${response.status}`);
+                }
+                const data = await response.json();
+                const transcript = (data.text || "").trim();
+                if (!transcript) {
+                  statusEl.textContent = "No transcript returned from ElevenLabs STT.";
+                } else {
+                  requestText.value = transcript;
+                  statusEl.textContent = `ElevenLabs heard: "${transcript}"`;
+                  runBooking();
+                }
+              } catch (error) {
+                statusEl.textContent = `Eleven STT failed: ${error.message}`;
+              }
+            };
+            mediaRecorder.start();
+            isElevenRecording = true;
+            elevenMicBtn.textContent = "Stop Eleven STT";
+            statusEl.textContent = "Recording... click 'Stop Eleven STT' to transcribe.";
+          } catch (error) {
+            statusEl.textContent = `Mic access denied: ${error.message}`;
+          }
+        } else {
+          isElevenRecording = false;
+          elevenMicBtn.textContent = "Eleven STT Mic";
+          if (mediaRecorder && mediaRecorder.state !== "inactive") {
+            mediaRecorder.stop();
+          }
+          if (mediaStream) {
+            mediaStream.getTracks().forEach((t) => t.stop());
+          }
+        }
+      }
+
+      function startMic() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+          statusEl.textContent = "Mic input is not supported in this browser. Use Chrome.";
+          return;
+        }
+        const recognition = new SpeechRecognition();
+        recognition.lang = "en-US";
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+
+        statusEl.textContent = "Listening...";
+        recognition.start();
+
+        recognition.onresult = (event) => {
+          const transcript = event.results[0][0].transcript;
+          requestText.value = transcript;
+          statusEl.textContent = `Heard: "${transcript}"`;
+          runBooking();
+        };
+
+        recognition.onerror = (event) => {
+          statusEl.textContent = `Mic error: ${event.error}`;
+        };
+      }
+
+      runBtn.addEventListener("click", runBooking);
+      micBtn.addEventListener("click", startMic);
+      elevenMicBtn.addEventListener("click", toggleElevenMic);
+      speakBtn.addEventListener("click", () => speakText(lastConfirmation || confirmationEl.textContent));
+      loadVoicesBtn.addEventListener("click", loadVoices);
+      bookAppointmentBtn.addEventListener("click", confirmBooking);
+      jumpInBtn.addEventListener("click", toggleJumpIn);
+      jumpInSend.addEventListener("click", () => {
+        const t = (jumpInText && jumpInText.value || "").trim();
+        if (!t || !liveVoiceWs || liveVoiceWs.readyState !== WebSocket.OPEN) return;
+        liveVoiceWs.send(JSON.stringify({ type: "user_message", text: t }));
+        appendLiveTranscript("You", t, null);
+        jumpInText.value = "";
+      });
+      (async () => {
+        const ready = await ensureBackendReady();
+        if (!ready) {
+          statusEl.textContent = backendHelpMessage("Backend not ready yet.");
+          return;
+        }
+        statusEl.textContent = `Backend connected at ${API_BASE}.`;
+        loadVoices();
+        loadBookings();
+      })();
+    </script>
+  </body>
+</html>

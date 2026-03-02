@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CallPilot Live Voice</title>
+    <style>
+      :root {
+        --bg: #0b1020;
+        --panel: #111a33;
+        --card: #1b274a;
+        --text: #e5ecff;
+        --muted: #9bb0e8;
+        --ok: #22c55e;
+        --warn: #f59e0b;
+        --err: #ef4444;
+        --accent: #38bdf8;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Avenir Next", "Segoe UI", sans-serif;
+        color: var(--text);
+        background: radial-gradient(circle at 10% 10%, #1d4ed8 0%, var(--bg) 45%);
+        min-height: 100vh;
+      }
+      .wrap {
+        max-width: 1200px;
+        margin: 24px auto;
+        padding: 16px;
+      }
+      .panel {
+        background: rgba(17, 26, 51, 0.92);
+        border: 1px solid #2d3f70;
+        border-radius: 14px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      h1 { margin: 0 0 8px; }
+      .sub { color: var(--muted); margin-bottom: 12px; }
+      .row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+      input, button, select {
+        border-radius: 10px;
+        border: 1px solid #3b4f85;
+        background: #0d1530;
+        color: var(--text);
+        padding: 10px 12px;
+      }
+      input { min-width: 230px; }
+      button {
+        background: linear-gradient(90deg, #34d399, var(--accent));
+        border: 0;
+        color: #021018;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button.secondary { background: #25345f; color: var(--text); border: 1px solid #3f568f; }
+      button.danger { background: #7f1d1d; color: #ffe7e7; }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid #334a85;
+        border-radius: 12px;
+        padding: 12px;
+      }
+      .card h3 { margin: 0 0 8px; }
+      .log {
+        background: #040b1c;
+        border: 1px solid #334a85;
+        border-radius: 8px;
+        min-height: 180px;
+        max-height: 280px;
+        overflow: auto;
+        padding: 10px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+      }
+      .pill {
+        display: inline-block;
+        padding: 5px 8px;
+        border-radius: 999px;
+        background: #1f3161;
+        margin-right: 8px;
+      }
+      .ok { color: var(--ok); }
+      .warn { color: var(--warn); }
+      .err { color: var(--err); }
+      @media (max-width: 900px) {
+        .grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="panel">
+        <h1>CallPilot Live Voice</h1>
+        <div class="sub">
+          Real-time ElevenLabs Conversational AI session with live tool-calling and interruption support.
+        </div>
+
+        <div class="row">
+          <input id="agentId" placeholder="ElevenLabs Agent ID" />
+          <input id="userId" placeholder="User ID (optional)" />
+          <label class="pill">
+            <input id="requiresAuth" type="checkbox" checked /> Requires Auth
+          </label>
+        </div>
+
+        <div class="row">
+          <button id="startBtn">Start Voice Call</button>
+          <button id="stopBtn" class="danger" disabled>End Call</button>
+          <button id="muteBtn" class="secondary" disabled>Mute Mic</button>
+          <button id="interruptBtn" class="secondary" disabled>Interrupt Agent</button>
+        </div>
+
+        <div class="row">
+          <input id="textInput" placeholder="Send text fallback (e.g., Book me a dentist tomorrow afternoon)" style="min-width: 420px;" />
+          <button id="sendTextBtn" class="secondary" disabled>Send Text</button>
+        </div>
+
+        <div class="row">
+          <span class="pill">Connection: <strong id="connectionState">disconnected</strong></span>
+          <span class="pill">Call State: <strong id="callState">idle</strong></span>
+          <span class="pill">Latency: <strong id="latency">-</strong></span>
+        </div>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <h3>Live Transcripts</h3>
+          <div id="transcripts" class="log"></div>
+        </article>
+        <article class="card">
+          <h3>Tool Calls</h3>
+          <div id="toolLogs" class="log"></div>
+        </article>
+        <article class="card">
+          <h3>System Events</h3>
+          <div id="events" class="log"></div>
+        </article>
+        <article class="card">
+          <h3>Debug</h3>
+          <div id="debug" class="log"></div>
+        </article>
+      </section>
+    </main>
+
+    <script>
+      const WS_URL = "ws://127.0.0.1:8000/api/voice/live/ws";
+
+      const agentIdEl = document.getElementById("agentId");
+      const userIdEl = document.getElementById("userId");
+      const requiresAuthEl = document.getElementById("requiresAuth");
+      const startBtn = document.getElementById("startBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      const muteBtn = document.getElementById("muteBtn");
+      const interruptBtn = document.getElementById("interruptBtn");
+      const sendTextBtn = document.getElementById("sendTextBtn");
+      const textInput = document.getElementById("textInput");
+      const connectionStateEl = document.getElementById("connectionState");
+      const callStateEl = document.getElementById("callState");
+      const latencyEl = document.getElementById("latency");
+      const transcriptsEl = document.getElementById("transcripts");
+      const toolLogsEl = document.getElementById("toolLogs");
+      const eventsEl = document.getElementById("events");
+      const debugEl = document.getElementById("debug");
+
+      let ws = null;
+      let audioContext = null;
+      let micStream = null;
+      let micSource = null;
+      let micProcessor = null;
+      let zeroGain = null;
+      let isMuted = false;
+      let isCallActive = false;
+      let playbackCursor = 0;
+      let activeSources = [];
+
+      function log(container, message) {
+        const ts = new Date().toLocaleTimeString();
+        container.textContent += `[${ts}] ${message}\n`;
+        container.scrollTop = container.scrollHeight;
+      }
+
+      function setConnectionState(state) {
+        connectionStateEl.textContent = state;
+      }
+
+      function setCallState(state) {
+        callStateEl.textContent = state;
+      }
+
+      function arrayBufferToBase64(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        const chunk = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunk) {
+          const slice = bytes.subarray(i, i + chunk);
+          binary += String.fromCharCode.apply(null, slice);
+        }
+        return btoa(binary);
+      }
+
+      function base64ToArrayBuffer(base64) {
+        const binary = atob(base64);
+        const len = binary.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes.buffer;
+      }
+
+      function downsampleBuffer(input, inputSampleRate, targetSampleRate) {
+        if (inputSampleRate === targetSampleRate) {
+          return input;
+        }
+        const ratio = inputSampleRate / targetSampleRate;
+        const newLength = Math.round(input.length / ratio);
+        const result = new Float32Array(newLength);
+        let offsetResult = 0;
+        let offsetBuffer = 0;
+
+        while (offsetResult < result.length) {
+          const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+          let accum = 0;
+          let count = 0;
+          for (let i = offsetBuffer; i < nextOffsetBuffer && i < input.length; i++) {
+            accum += input[i];
+            count++;
+          }
+          result[offsetResult] = count > 0 ? accum / count : 0;
+          offsetResult++;
+          offsetBuffer = nextOffsetBuffer;
+        }
+        return result;
+      }
+
+      function float32ToPCM16Buffer(float32Array) {
+        const buffer = new ArrayBuffer(float32Array.length * 2);
+        const view = new DataView(buffer);
+        for (let i = 0; i < float32Array.length; i++) {
+          let s = Math.max(-1, Math.min(1, float32Array[i]));
+          view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        }
+        return buffer;
+      }
+
+      function pcm16ToAudioBuffer(pcmBytes, sampleRate = 16000) {
+        if (!audioContext) return null;
+        const dataView = new DataView(pcmBytes);
+        const length = pcmBytes.byteLength / 2;
+        const audioBuffer = audioContext.createBuffer(1, length, sampleRate);
+        const channelData = audioBuffer.getChannelData(0);
+
+        for (let i = 0; i < length; i++) {
+          const sample = dataView.getInt16(i * 2, true);
+          channelData[i] = sample / 32768;
+        }
+        return audioBuffer;
+      }
+
+      function queuePlayback(audioBuffer) {
+        if (!audioContext || !audioBuffer) return;
+
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+
+        const startAt = Math.max(audioContext.currentTime + 0.01, playbackCursor);
+        source.start(startAt);
+        playbackCursor = startAt + audioBuffer.duration;
+
+        activeSources.push(source);
+        source.onended = () => {
+          activeSources = activeSources.filter((s) => s !== source);
+        };
+      }
+
+      function interruptPlayback() {
+        playbackCursor = audioContext ? audioContext.currentTime : 0;
+        activeSources.forEach((s) => {
+          try { s.stop(); } catch (_) {}
+        });
+        activeSources = [];
+      }
+
+      async function ensureAudioContext() {
+        if (!audioContext) {
+          audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioContext.state === "suspended") {
+          await audioContext.resume();
+        }
+      }
+
+      async function startMicCapture() {
+        await ensureAudioContext();
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        micSource = audioContext.createMediaStreamSource(micStream);
+        micProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+        zeroGain = audioContext.createGain();
+        zeroGain.gain.value = 0;
+
+        micSource.connect(micProcessor);
+        micProcessor.connect(zeroGain);
+        zeroGain.connect(audioContext.destination);
+
+        micProcessor.onaudioprocess = (event) => {
+          if (!isCallActive || isMuted || !ws || ws.readyState !== WebSocket.OPEN) {
+            return;
+          }
+          const input = event.inputBuffer.getChannelData(0);
+          const downsampled = downsampleBuffer(input, audioContext.sampleRate, 16000);
+          const pcmBuffer = float32ToPCM16Buffer(downsampled);
+          const b64 = arrayBufferToBase64(pcmBuffer);
+          ws.send(JSON.stringify({ type: "audio", audio_base64: b64 }));
+        };
+      }
+
+      function stopMicCapture() {
+        if (micProcessor) {
+          try { micProcessor.disconnect(); } catch (_) {}
+          micProcessor.onaudioprocess = null;
+          micProcessor = null;
+        }
+        if (micSource) {
+          try { micSource.disconnect(); } catch (_) {}
+          micSource = null;
+        }
+        if (zeroGain) {
+          try { zeroGain.disconnect(); } catch (_) {}
+          zeroGain = null;
+        }
+        if (micStream) {
+          micStream.getTracks().forEach((t) => t.stop());
+          micStream = null;
+        }
+      }
+
+      function setCallControls(enabled) {
+        stopBtn.disabled = !enabled;
+        muteBtn.disabled = !enabled;
+        interruptBtn.disabled = !enabled;
+        sendTextBtn.disabled = !enabled;
+        startBtn.disabled = enabled;
+      }
+
+      async function startCall() {
+        const agentId = agentIdEl.value.trim();
+        if (!agentId) {
+          log(eventsEl, "Agent ID is required.");
+          return;
+        }
+
+        await ensureAudioContext();
+        ws = new WebSocket(WS_URL);
+
+        ws.onopen = async () => {
+          setConnectionState("connected");
+          log(eventsEl, "WebSocket connected.");
+
+          ws.send(
+            JSON.stringify({
+              type: "start",
+              agent_id: agentId,
+              user_id: userIdEl.value.trim() || null,
+              requires_auth: Boolean(requiresAuthEl.checked),
+            })
+          );
+
+          isCallActive = true;
+          setCallControls(true);
+
+          try {
+            await startMicCapture();
+            log(eventsEl, "Mic capture started (PCM16 16k streaming).");
+          } catch (error) {
+            log(eventsEl, `Mic error: ${error.message}`);
+          }
+        };
+
+        ws.onmessage = async (evt) => {
+          let payload = null;
+          try {
+            payload = JSON.parse(evt.data);
+          } catch (error) {
+            log(debugEl, `Non-JSON message: ${evt.data}`);
+            return;
+          }
+
+          switch (payload.type) {
+            case "session_started":
+              log(eventsEl, `Session started: ${payload.session_id}`);
+              break;
+            case "conversation_ready":
+              log(eventsEl, `Conversation ready: ${payload.conversation_id || "n/a"}`);
+              break;
+            case "state":
+              setCallState(payload.state || "unknown");
+              break;
+            case "latency":
+              latencyEl.textContent = payload.ping_ms ? `${payload.ping_ms} ms` : "-";
+              break;
+            case "user_transcript":
+              log(transcriptsEl, `You: ${payload.text || ""}`);
+              break;
+            case "agent_response":
+              log(transcriptsEl, `Agent: ${payload.text || ""}`);
+              break;
+            case "agent_chat_response_part":
+              log(debugEl, `agent_chat_response_part(${payload.part}): ${payload.text}`);
+              break;
+            case "tool_call":
+              log(toolLogsEl, `TOOL_CALL ${payload.tool_name} ${JSON.stringify(payload.parameters || {})}`);
+              break;
+            case "tool_result":
+              log(toolLogsEl, `TOOL_RESULT ${payload.tool_name} ${JSON.stringify(payload.result || {})}`);
+              break;
+            case "audio": {
+              try {
+                const pcmBytes = base64ToArrayBuffer(payload.audio_base64 || "");
+                const buffer = pcm16ToAudioBuffer(pcmBytes, 16000);
+                queuePlayback(buffer);
+              } catch (err) {
+                log(debugEl, `Audio decode error: ${err.message}`);
+              }
+              break;
+            }
+            case "interruption":
+              interruptPlayback();
+              log(eventsEl, "Interruption received. Cleared playback queue.");
+              break;
+            case "error":
+              log(eventsEl, `Error: ${payload.message}`);
+              break;
+            default:
+              log(debugEl, `Event ${payload.type}: ${JSON.stringify(payload)}`);
+          }
+        };
+
+        ws.onerror = (evt) => {
+          log(eventsEl, "WebSocket error occurred.");
+          log(debugEl, JSON.stringify(evt));
+        };
+
+        ws.onclose = () => {
+          setConnectionState("disconnected");
+          setCallState("ended");
+          isCallActive = false;
+          setCallControls(false);
+          stopMicCapture();
+          interruptPlayback();
+          log(eventsEl, "WebSocket closed.");
+          ws = null;
+        };
+      }
+
+      function stopCall() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "stop" }));
+          ws.close();
+        }
+        isCallActive = false;
+      }
+
+      function sendTextFallback() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        const text = textInput.value.trim();
+        if (!text) return;
+        ws.send(JSON.stringify({ type: "user_message", text }));
+        textInput.value = "";
+      }
+
+      function toggleMute() {
+        isMuted = !isMuted;
+        muteBtn.textContent = isMuted ? "Unmute Mic" : "Mute Mic";
+        log(eventsEl, isMuted ? "Mic muted" : "Mic unmuted");
+      }
+
+      function requestInterrupt() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        interruptPlayback();
+        ws.send(JSON.stringify({ type: "user_activity" }));
+        log(eventsEl, "Manual interruption requested.");
+      }
+
+      startBtn.addEventListener("click", startCall);
+      stopBtn.addEventListener("click", stopCall);
+      muteBtn.addEventListener("click", toggleMute);
+      interruptBtn.addEventListener("click", requestInterrupt);
+      sendTextBtn.addEventListener("click", sendTextFallback);
+      textInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") sendTextFallback();
+      });
+    </script>
+  </body>
+</html>
