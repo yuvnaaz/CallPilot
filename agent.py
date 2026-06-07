@@ -1,6 +1,11 @@
 import os
+import sys
 from dotenv import load_dotenv
 from elevenlabs.client import ElevenLabs
+
+# Reconfigure stdout to use UTF-8 to prevent UnicodeEncodeError when printing emojis on Windows
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 # Load environment variables
 load_dotenv()
@@ -34,10 +39,11 @@ class CallPilotAgent:
         try:
             print(f"\n🎙️ Generating speech: '{text}'")
             
-            audio = self.client.generate(
+            # Use ElevenLabs v2.x text_to_speech.convert method
+            audio = self.client.text_to_speech.convert(
+                voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel Voice ID
                 text=text,
-                voice="Rachel",  # Default voice
-                model="eleven_monolingual_v1"
+                model_id="eleven_monolingual_v1"
             )
             
             # Save audio file
@@ -62,7 +68,9 @@ if __name__ == "__main__":
     if agent.test_connection():
         print("\n" + "="*50)
         # Test 2: Generate speech
-        agent.generate_test_speech()
-        print("\n✅ All tests passed! Ready to build CallPilot!")
+        if agent.generate_test_speech():
+            print("\n✅ All tests passed! Ready to build CallPilot!")
+        else:
+            print("\n❌ Speech generation failed! Please check your voice settings.")
     else:
         print("\n❌ Fix the API key and try again")

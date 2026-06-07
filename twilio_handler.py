@@ -105,7 +105,7 @@ class TwilioIntegrationService:
                 extra_data["user_id"] = user_id
 
             client = self._get_client()
-            raw_response = await client.conversational_ai.twilio.with_raw_response.register_call(
+            twiml = await client.conversational_ai.twilio.register_call(
                 agent_id=self._agent_id,
                 from_number=from_number,
                 to_number=to_number,
@@ -114,7 +114,7 @@ class TwilioIntegrationService:
                 conversation_initiation_client_data=extra_data or None,
             )
 
-            twiml = raw_response.response.text.strip() if raw_response and raw_response.response else ""
+            twiml = twiml.strip() if twiml else ""
             if not twiml:
                 logger.warning("register_call returned empty TwiML, using fallback")
                 return self._fallback_twiml("Unable to start the AI agent right now.")

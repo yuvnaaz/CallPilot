@@ -1,4 +1,19 @@
-# Mock provider database for demo
+from datetime import datetime, timedelta
+
+# Dynamically generate dates relative to "today" to make the demo work correctly at any time
+_today = datetime.now().date()
+_tomorrow = _today + timedelta(days=1)
+_day_after = _today + timedelta(days=2)
+
+# Find Friday of this week
+_today_weekday = _today.weekday()
+_friday = _today + timedelta(days=(4 - _today_weekday) % 7)
+
+# Format dates
+_date_today_str = _today.strftime("%Y-%m-%d")
+_date_tomorrow_str = _tomorrow.strftime("%Y-%m-%d")
+_date_day_after_str = _day_after.strftime("%Y-%m-%d")
+_date_friday_str = _friday.strftime("%Y-%m-%d")
 
 PROVIDERS = [
     {
@@ -10,10 +25,10 @@ PROVIDERS = [
         "rating": 4.7,
         "distance_km": 2.3,
         "available_slots": [
-            "2024-02-09 10:00",
-            "2024-02-09 14:00",
-            "2024-02-09 16:30",
-            "2024-02-10 09:00"
+            f"{_date_tomorrow_str} 10:00",
+            f"{_date_tomorrow_str} 14:00",
+            f"{_date_tomorrow_str} 16:30",
+            f"{_date_day_after_str} 09:00"
         ]
     },
     {
@@ -25,9 +40,9 @@ PROVIDERS = [
         "rating": 4.3,
         "distance_km": 5.8,
         "available_slots": [
-            "2024-02-09 11:00",
-            "2024-02-09 15:00",
-            "2024-02-10 10:00"
+            f"{_date_tomorrow_str} 11:00",
+            f"{_date_tomorrow_str} 15:00",
+            f"{_date_day_after_str} 10:00"
         ]
     },
     {
@@ -39,9 +54,9 @@ PROVIDERS = [
         "rating": 4.9,
         "distance_km": 8.2,
         "available_slots": [
-            "2024-02-10 14:00",
-            "2024-02-11 09:00",
-            "2024-02-11 11:00"
+            f"{_date_day_after_str} 14:00",
+            f"{_date_friday_str} 09:00",
+            f"{_date_friday_str} 11:00"
         ]
     },
     {
@@ -53,9 +68,9 @@ PROVIDERS = [
         "rating": 4.5,
         "distance_km": 1.9,
         "available_slots": [
-            "2024-02-09 12:00",
-            "2024-02-09 14:30",
-            "2024-02-09 17:00"
+            f"{_date_tomorrow_str} 12:00",
+            f"{_date_tomorrow_str} 14:30",
+            f"{_date_tomorrow_str} 17:00"
         ]
     },
     {
@@ -67,9 +82,9 @@ PROVIDERS = [
         "rating": 4.6,
         "distance_km": 6.5,
         "available_slots": [
-            "2024-02-09 08:00",
-            "2024-02-10 08:00",
-            "2024-02-10 13:00"
+            f"{_date_tomorrow_str} 08:00",
+            f"{_date_day_after_str} 08:00",
+            f"{_date_day_after_str} 13:00"
         ]
     }
 ]
@@ -77,17 +92,17 @@ PROVIDERS = [
 # Mock user calendar (to check conflicts)
 USER_CALENDAR = [
     {
-        "date": "2024-02-09",
+        "date": _date_tomorrow_str,
         "time": "09:00-11:00",
         "event": "Team Meeting"
     },
     {
-        "date": "2024-02-09",
+        "date": _date_tomorrow_str,
         "time": "14:00-15:00",
         "event": "Client Call"
     },
     {
-        "date": "2024-02-10",
+        "date": _date_day_after_str,
         "time": "13:00-14:30",
         "event": "Lunch with Sarah"
     }
@@ -101,8 +116,10 @@ def check_calendar_conflict(date, time):
     """Check if proposed appointment conflicts with calendar"""
     for event in USER_CALENDAR:
         if event["date"] == date:
-            # Simple conflict check (can be improved)
-            return True, event["event"]
+            if "-" in event["time"]:
+                start, end = [x.strip() for x in event["time"].split("-", 1)]
+                if start <= time < end:
+                    return True, event["event"]
     return False, None
 
 # Test the data

@@ -10,7 +10,7 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 try:
@@ -155,6 +155,18 @@ async def get_config() -> Dict[str, Any]:
     """Return client config (e.g. agent_id for live voice Jump in)."""
     agent_id = os.getenv("ELEVENLABS_AGENT_ID", "").strip()
     return {"elevenlabs_agent_id": agent_id or None}
+
+
+@app.get("/")
+async def get_index() -> FileResponse:
+    """Serve the main frontend index.html."""
+    return FileResponse("index.html")
+
+
+@app.get("/voice")
+async def get_voice_interface() -> FileResponse:
+    """Serve the live voice interface voice_interface.html."""
+    return FileResponse("voice_interface.html")
 
 
 @app.post("/api/book")
@@ -511,5 +523,7 @@ async def list_twilio_calls() -> Dict[str, Any]:
 
 if __name__ == "__main__":
     import uvicorn
+    import os
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.getenv("PORT", "8080"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)

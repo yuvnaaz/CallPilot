@@ -156,7 +156,9 @@
     </main>
 
     <script>
-      const WS_URL = "ws://127.0.0.1:8000/api/voice/live/ws";
+      const WS_URL = window.location.protocol === "file:"
+        ? "ws://127.0.0.1:8080/api/voice/live/ws"
+        : (window.location.protocol === "https:" ? "wss://" : "ws://") + window.location.host + "/api/voice/live/ws";
 
       const agentIdEl = document.getElementById("agentId");
       const userIdEl = document.getElementById("userId");
